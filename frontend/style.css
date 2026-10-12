@@ -1,0 +1,209 @@
+/* ComplianceIQ Enterprise Modern Production Styling */
+
+/* Typography & Base */
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.font-serif {
+    font-family: 'Newsreader', Georgia, Cambria, 'Times New Roman', Times, serif;
+}
+
+.font-mono {
+    font-family: 'JetBrains Mono', Menlo, Monaco, Consolas, monospace;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #0f172a;
+}
+::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+}
+
+/* Navigation active tab */
+.nav-tab.active {
+    background-color: #1e293b;
+    color: #f8fafc;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.nav-tab:not(.active) {
+    color: #94a3b8;
+}
+.nav-tab:not(.active):hover {
+    color: #f1f5f9;
+    background-color: rgba(30, 41, 59, 0.5);
+}
+
+/* ========================================================================= */
+/* THE REALISTIC LEGAL DOCUMENT PAPER SHEET */
+/* ========================================================================= */
+.document-paper {
+    background-color: #fdfbf7;
+    background-image: 
+        radial-gradient(#e5e1d8 0.75px, transparent 0.75px),
+        linear-gradient(to bottom, #ffffff 0%, #fdfbf7 100%);
+    background-size: 20px 20px, 100% 100%;
+    color: #1e293b;
+    min-height: 880px;
+    padding: 48px 56px;
+    border-radius: 4px;
+    box-shadow: 
+        0 20px 50px -10px rgba(0, 0, 0, 0.7),
+        0 0 0 1px rgba(255, 255, 255, 0.1),
+        0 0 30px rgba(0, 0, 0, 0.3) inset;
+    border: 1px solid #e2ddd3;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Realistic Rubber Stamp Badges */
+.stamp-badge {
+    padding: 6px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 800;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border-radius: 4px;
+    mask-image: radial-gradient(circle, black 70%, rgba(0, 0, 0, 0.7) 100%);
+    box-shadow: 0 0 0 1px inset;
+}
+
+.stamp-official {
+    color: #15803d;
+    border: 3px double #15803d;
+    background-color: rgba(34, 197, 94, 0.08);
+    transform: rotate(-10deg);
+}
+
+.stamp-violation {
+    color: #b91c1c;
+    border: 3px double #b91c1c;
+    background-color: rgba(239, 68, 68, 0.08);
+    transform: rotate(8deg);
+}
+
+.stamp-expired {
+    color: #c2410c;
+    border: 3px double #c2410c;
+    background-color: rgba(249, 115, 22, 0.08);
+    transform: rotate(-6deg);
+}
+
+.stamp-unverified {
+    color: #b45309;
+    border: 3px double #b45309;
+    background-color: rgba(245, 158, 11, 0.08);
+    transform: rotate(5deg);
+}
+
+.stamp-indeterminate {
+    color: #6b21a8;
+    border: 3px double #6b21a8;
+    background-color: rgba(168, 85, 247, 0.08);
+    transform: rotate(-12deg);
+}
+
+/* Clause Interactive Highlighting */
+.clause-block {
+    padding: 8px 12px;
+    border-radius: 6px;
+    transition: all 0.25s ease;
+    border-left: 3px solid transparent;
+}
+
+.clause-block:hover {
+    background-color: rgba(241, 245, 249, 0.8);
+}
+
+.clause-highlight-active {
+    background-color: rgba(254, 240, 138, 0.55) !important;
+    border-left: 4px solid #eab308 !important;
+    box-shadow: 0 0 15px rgba(234, 179, 8, 0.25);
+    animation: pulseHighlight 1.5s infinite alternate;
+}
+
+.clause-highlight-compliant {
+    background-color: rgba(220, 252, 231, 0.65) !important;
+    border-left: 4px solid #16a34a !important;
+}
+
+.clause-highlight-violation {
+    background-color: rgba(254, 226, 226, 0.65) !important;
+    border-left: 4px solid #dc2626 !important;
+}
+
+@keyframes pulseHighlight {
+    0% { background-color: rgba(254, 240, 138, 0.4); }
+    100% { background-color: rgba(254, 240, 138, 0.85); }
+}
+
+/* Status Pills */
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.status-compliant {
+    background-color: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-non-compliant {
+    background-color: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.status-unverified {
+    background-color: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.status-indeterminate {
+    background-color: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+    border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.status-not-applicable {
+    background-color: rgba(100, 116, 139, 0.15);
+    color: #94a3b8;
+    border: 1px solid rgba(100, 116, 139, 0.3);
+}
+
+/* Traceability Passage Callout */
+.trace-quote {
+    background-color: rgba(15, 23, 42, 0.8);
+    border-left: 3px solid #3b82f6;
+    padding: 8px 12px;
+    border-radius: 0 8px 8px 0;
+    font-family: 'Newsreader', serif;
+    font-size: 13px;
+    color: #e2e8f0;
+    font-style: italic;
+}
+
+/* Demo chip selection */
+.demo-chip.active-chip {
+    box-shadow: 0 0 0 2px #3b82f6;
+    transform: translateY(-1px);
+}

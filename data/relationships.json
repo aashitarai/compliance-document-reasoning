@@ -1,0 +1,100 @@
+[
+  {
+    "rel_id": "REL-0001",
+    "source_id": "DOC-C1-01",
+    "target_id": "RULE-SEC-001",
+    "relationship_type": "implements",
+    "description": "Policy Section 4.1 implements regulatory encryption rule"
+  },
+  {
+    "rel_id": "REL-0002",
+    "source_id": "DOC-C1-01",
+    "target_id": "RULE-SEC-002",
+    "relationship_type": "implements",
+    "description": "Policy Section 4.2 implements regulatory MFA rule"
+  },
+  {
+    "rel_id": "REL-0003",
+    "source_id": "DOC-C1-02",
+    "target_id": "DOC-C1-01",
+    "relationship_type": "satisfies",
+    "description": "Contract Clause 8 binds vendor to policy requirements"
+  },
+  {
+    "rel_id": "REL-0004",
+    "source_id": "DOC-C1-03",
+    "target_id": "RULE-SEC-001",
+    "relationship_type": "supports",
+    "description": "Deloitte SOC 2 Section IV confirms AES-256 and TLS 1.3 controls"
+  },
+  {
+    "rel_id": "REL-0005",
+    "source_id": "DOC-C1-03",
+    "target_id": "RULE-SEC-002",
+    "relationship_type": "supports",
+    "description": "Deloitte SOC 2 Section IV confirms 100% MFA compliance"
+  },
+  {
+    "rel_id": "REL-0006",
+    "source_id": "DOC-C2-01",
+    "target_id": "RULE-SEC-004",
+    "relationship_type": "implements",
+    "description": "Implements GDPR Art. 33 notification mandate"
+  },
+  {
+    "rel_id": "REL-0007",
+    "source_id": "DOC-C2-02",
+    "target_id": "RULE-SEC-004",
+    "relationship_type": "fails_to_satisfy",
+    "description": "Clause 11.4 allows 10 business days, directly violating 72-hour ceiling"
+  },
+  {
+    "rel_id": "REL-0008",
+    "source_id": "DOC-C2-03",
+    "target_id": "RULE-SEC-004",
+    "relationship_type": "supports",
+    "description": "Audit evidence proves notification elapsed 271 hours vs 72-hour limit"
+  },
+  {
+    "rel_id": "REL-0009",
+    "source_id": "DOC-C3-01",
+    "target_id": "RULE-SEC-006",
+    "relationship_type": "requires",
+    "description": "Contract clause 14 promises subprocessor due diligence audit availability"
+  },
+  {
+    "rel_id": "REL-0010",
+    "source_id": "RULE-SEC-006",
+    "target_id": "DOC-C3-01",
+    "relationship_type": "evidence_missing_for",
+    "description": "Required subprocessor due diligence audit report and active subprocessor registry have not been supplied"
+  },
+  {
+    "rel_id": "REL-0011",
+    "source_id": "DOC-C4-02",
+    "target_id": "RULE-SEC-007",
+    "relationship_type": "fails_to_satisfy",
+    "description": "Certificate expired on 2023-06-14; currently invalid"
+  },
+  {
+    "rel_id": "REL-0012",
+    "source_id": "DOC-C5-03",
+    "target_id": "DOC-C5-02",
+    "relationship_type": "contradicts",
+    "description": "Technical audit observed 90-day automated purge contradicting CISO 365-day declaration"
+  },
+  {
+    "rel_id": "REL-0013",
+    "source_id": "DOC-C7-02",
+    "target_id": "DOC-C7-01",
+    "relationship_type": "supersedes",
+    "description": "Amendment No. 2 supersedes Clause 12.1 of 2021 Base Agreement"
+  },
+  {
+    "rel_id": "REL-0014",
+    "source_id": "DOC-C7-02",
+    "target_id": "RULE-SEC-004",
+    "relationship_type": "satisfies",
+    "description": "Amended Clause 12.1 enforces 72-hour notification"
+  }
+]

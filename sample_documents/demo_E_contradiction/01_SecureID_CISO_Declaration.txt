@@ -1,0 +1,4 @@
+SECUREID CISO ANNUAL SECURITY DECLARATION
+I, Marcus Vance, Chief Information Security Officer of SecureID Systems, hereby certify that:
+1. All system event logs, authentication logs, and privileged administrative sessions are archived to immutable AWS S3 Glacier storage.
+2. Log retention policies strictly enforce 365-day minimum preservation prior to automated purging.

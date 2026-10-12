@@ -1,0 +1,4 @@
+MERCHANT PAYMENT SERVICES AGREEMENT
+BETWEEN: NovuHealth Therapeutics ('Customer') AND BritePay Merchant Operations ('Processor')
+SECTION 11. SECURITY INCIDENTS AND BREACH NOTIFICATION
+11.4 Notification Period: In the event Processor confirms a verified security incident affecting Customer cardholder data or credentials, Processor shall exercise commercially reasonable efforts to notify Customer within ten (10) business days following completion of internal forensic investigation. In no event shall notice be required earlier than seven (7) business days from incident confirmation.
