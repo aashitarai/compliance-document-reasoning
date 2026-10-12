@@ -151,6 +151,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+import textwrap
+
+def render_html(html_str: str):
+    """Render HTML cleanly in Streamlit without CommonMark code block indentation artifacts."""
+    st.markdown(textwrap.dedent(html_str).strip(), unsafe_allow_html=True)
+
+
 
 # Organizations & Document Vault Catalog
 ORGANIZATIONS = [
@@ -434,7 +441,7 @@ with tab_workspace:
             fpath = os.path.join(target_folder, fname)
             if os.path.isfile(fpath):
                 with open(fpath, "rb") as fb:
-                    parsed_docs.append(process_uploaded_document(fname, fb.read()))
+                    parsed_docs.append(process_uploaded_document(fb.read(), fname))
 
     rules_cat = load_rules_catalogue()
     audit_res = analyze_uploaded_session(
@@ -451,9 +458,14 @@ with tab_workspace:
     with col_paper:
         st.markdown(f"#### 📄 Document Family Inspector ({len(parsed_docs)} Ingested)")
         
-        # Document Tab Selector
+        # Document Tab Selector with Clean Friendly Display Names
         doc_names = [d["filename"] for d in parsed_docs]
-        chosen_doc_name = st.selectbox("Inspect Active Document Sheet", options=doc_names, label_visibility="collapsed")
+        chosen_doc_name = st.selectbox(
+            "Inspect Active Document Sheet",
+            options=doc_names,
+            format_func=lambda x: f"📄 {os.path.basename(x).replace('_', ' ')}",
+            label_visibility="collapsed"
+        )
         chosen_doc = next(d for d in parsed_docs if d["filename"] == chosen_doc_name)
         
         # Determine Stamp
@@ -493,7 +505,7 @@ with tab_workspace:
             </div>
         </div>
         """
-        st.markdown(paper_html, unsafe_allow_html=True)
+        render_html(paper_html)
 
     with col_findings:
         st.markdown(f"#### ⚖️ Compliance Findings ({len(audit_res['findings'])} Evaluated)")
@@ -507,14 +519,15 @@ with tab_workspace:
         sc4.metric("Conflict", dist.get("Indeterminate", 0))
         sc5.metric("N/A", dist.get("Not applicable", 0))
 
-        # Finding Cards
+        # Finding Cards rendered cleanly via render_html
         for f in audit_res["findings"]:
             status_slug = f["expected_status"].lower().replace(" ", "-")
             sem_pct = f.get("semantic_score_pct", 88)
             cosine_v = f.get("semantic_similarity", 0.884)
             plain_sum = f.get("plain_english_summary", "Assessment complete.")
+            supporting_passage = f.get('relevant_passages', [''])[0][:160] if f.get('relevant_passages') else "No direct quote available."
 
-            st.markdown(f"""
+            card_html = f"""
             <div class="finding-card">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                     <div>
@@ -526,7 +539,6 @@ with tab_workspace:
                     <span class="badge-status status-{status_slug}">{f['expected_status']}</span>
                 </div>
                 
-                <!-- Plain-English Summary Box -->
                 <div class="summary-box">
                     <strong style="color: #60a5fa; font-size: 0.72rem; text-transform: uppercase; font-family: 'JetBrains Mono'; display: block; margin-bottom: 2px;">
                         Finding Summary
@@ -534,7 +546,6 @@ with tab_workspace:
                     {plain_sum}
                 </div>
 
-                <!-- Semantic Alignment Meter -->
                 <div style="margin: 10px 0;">
                     <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px;">
                         <span>Semantic Document Match</span>
@@ -545,18 +556,17 @@ with tab_workspace:
                     </div>
                 </div>
 
-                <!-- Traceable Passage -->
                 <div style="margin-top: 10px;">
                     <span style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 700; display: block;">Supporting Passage:</span>
-                    <div class="quote-box">"{f.get('relevant_passages', [''])[0][:160]}..."</div>
+                    <div class="quote-box">"{supporting_passage}..."</div>
                 </div>
 
-                <!-- Recommended Action -->
                 <div style="margin-top: 8px; font-size: 0.78rem; color: #cbd5e1; border-top: 1px solid #1e293b; padding-top: 8px;">
                     <span style="color: #f59e0b; font-weight: 600;">Recommended Action:</span> {f.get('recommended_action', 'Maintain standard monitoring.')}
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+            """
+            render_html(card_html)
 
 
 # =============================================================================
@@ -616,7 +626,7 @@ with tab_upload:
         st.success(f"Loaded {len(uploaded)} file(s).")
         custom_docs = []
         for uf in uploaded:
-            custom_docs.append(process_uploaded_document(uf.name, uf.read()))
+            custom_docs.append(process_uploaded_document(uf.read(), uf.name))
 
         if st.button("🚀 Analyze Uploaded Files", type="primary"):
             c_res = analyze_uploaded_session(custom_docs, rules_catalogue=rules_cat)
@@ -681,7 +691,7 @@ with tab_rules:
     for idx, rule in enumerate(filtered_rules):
         with r_grid[idx % 3]:
             sev_color = "red" if rule["severity"] == "Critical" else "orange" if rule["severity"] == "High" else "blue"
-            st.markdown(f"""
+            rule_card_html = f"""
             <div class="finding-card">
                 <div style="display: flex; justify-content: space-between; font-size: 0.72rem; font-family: 'JetBrains Mono'; margin-bottom: 4px;">
                     <span style="color: #60a5fa; font-weight: 700;">{rule['rule_id']}</span>
@@ -698,7 +708,8 @@ with tab_rules:
                     <strong style="color: #94a3b8;">Required Control:</strong> {rule['required_action_or_control']}
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+            """
+            render_html(rule_card_html)
 
 
 # =============================================================================

@@ -392,8 +392,28 @@ def read_image(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     }
 
 
-def process_uploaded_document(file_bytes: bytes, filename: str) -> Dict[str, Any]:
-    """Unified entrypoint dispatching by file extension."""
+def process_uploaded_document(arg1: Any, arg2: Any) -> Dict[str, Any]:
+    """
+    Unified entrypoint dispatching by file extension.
+    Accepts either (file_bytes, filename) or (filename, file_bytes).
+    """
+    if isinstance(arg1, (bytes, bytearray)) and isinstance(arg2, str):
+        file_bytes = bytes(arg1)
+        filename = arg2
+    elif isinstance(arg1, str) and isinstance(arg2, (bytes, bytearray)):
+        filename = arg1
+        file_bytes = bytes(arg2)
+    elif isinstance(arg1, str) and hasattr(arg2, "read"):
+        filename = arg1
+        file_bytes = arg2.read()
+    elif hasattr(arg1, "read") and isinstance(arg2, str):
+        file_bytes = arg1.read()
+        filename = arg2
+    else:
+        # Fallback cast
+        file_bytes = bytes(arg1) if isinstance(arg1, (bytes, bytearray)) else str(arg1).encode('utf-8', errors='ignore')
+        filename = str(arg2)
+
     ext = os.path.splitext(filename)[1].lower()
 
     if ext == ".pdf":
