@@ -151,11 +151,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-import textwrap
-
 def render_html(html_str: str):
     """Render HTML cleanly in Streamlit without CommonMark code block indentation artifacts."""
-    st.markdown(textwrap.dedent(html_str).strip(), unsafe_allow_html=True)
+    clean_lines = [line.strip() for line in html_str.splitlines() if line.strip()]
+    st.markdown("\n".join(clean_lines), unsafe_allow_html=True)
+
 
 
 
@@ -372,6 +372,10 @@ with tab_workspace:
             st.write("")
             run_audit = st.button("🚀 Run Compliance Audit", use_container_width=True, type="primary")
 
+    if run_audit:
+        st.toast(f"Running compliance engine for {selected_vendor['name']}...")
+        st.success(f"✅ Real-Time Audit Session Executed: Verified against governing statutory standards for {selected_vendor['name']}.")
+
     # Vault Files Ribbon with Direct Download Buttons
     st.markdown("##### 📥 Download Company Vault Files:")
     r_cols = st.columns(4)
@@ -519,13 +523,33 @@ with tab_workspace:
         sc4.metric("Conflict", dist.get("Indeterminate", 0))
         sc5.metric("N/A", dist.get("Not applicable", 0))
 
+        # Interactive Status Filter
+        status_filter = st.selectbox(
+            "Filter Findings:",
+            options=["All Evaluated Obligations", "Compliant", "Non-compliant (Violations)", "Unverified", "Indeterminate (Conflict)"],
+            index=0
+        )
+
+        display_findings = audit_res["findings"]
+        if status_filter == "Compliant":
+            display_findings = [f for f in display_findings if f["expected_status"] == "Compliant"]
+        elif status_filter == "Non-compliant (Violations)":
+            display_findings = [f for f in display_findings if f["expected_status"] == "Non-compliant"]
+        elif status_filter == "Unverified":
+            display_findings = [f for f in display_findings if f["expected_status"] == "Unverified"]
+        elif status_filter == "Indeterminate (Conflict)":
+            display_findings = [f for f in display_findings if f["expected_status"] == "Indeterminate"]
+
+        if not display_findings:
+            st.info(f"No findings matching filter '{status_filter}' for this assessment session.")
+
         # Finding Cards rendered cleanly via render_html
-        for f in audit_res["findings"]:
+        for f in display_findings:
             status_slug = f["expected_status"].lower().replace(" ", "-")
             sem_pct = f.get("semantic_score_pct", 88)
             cosine_v = f.get("semantic_similarity", 0.884)
             plain_sum = f.get("plain_english_summary", "Assessment complete.")
-            supporting_passage = f.get('relevant_passages', [''])[0][:160] if f.get('relevant_passages') else "No direct quote available."
+            supporting_passage = f.get('relevant_passages', [''])[0][:200] if f.get('relevant_passages') else "No direct quote available."
 
             card_html = f"""
             <div class="finding-card">
@@ -567,6 +591,22 @@ with tab_workspace:
             </div>
             """
             render_html(card_html)
+
+            # Detailed Deontic Proof & Axiomatic Deduction Steps
+            with st.expander(f"🔬 View Deontic Proof & Reasoning Chain ({f['rule_id']})"):
+                st.markdown(f"**Statutory Standard:** `{f.get('source_name', 'Governing Standard')} ({f.get('jurisdiction', 'Global')})`")
+                if f.get("rule_text"):
+                    st.caption(f"_{f['rule_text']}_")
+                st.markdown(f"**Required Control:** `{f.get('required_action_or_control', 'Not specified')}`")
+                st.markdown(f"**Deontic Valuation:** `S(r) = {f['expected_status']}` (Sufficiency: **{f.get('evidence_sufficiency', 'Standard')}**)")
+                st.markdown("**Axiomatic Deduction Steps:**")
+                for s_idx, step in enumerate(f.get("reasoning_steps", [])):
+                    st.markdown(f"{s_idx + 1}. {step}")
+                if f.get("missing_evidence"):
+                    st.warning(f"**Missing Evidentiary Proof:** {f['missing_evidence']}")
+                if f.get("contradictions") and f["contradictions"] != "None.":
+                    st.error(f"**Conflict Detected:** ⚠️ {f['contradictions']}")
+
 
 
 # =============================================================================

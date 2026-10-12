@@ -517,6 +517,11 @@ def evaluate_single_requirement(
     res["semantic_score_pct"] = sim_pct
     res["plain_english_summary"] = plain_summary
     res["retrieval_method"] = "Neuro-Symbolic (Dense Cosine Alignment + Deontic Proof)"
+    res["rule_text"] = rule.get("rule_text", "")
+    res["required_action_or_control"] = rule.get("required_action_or_control", "")
+    res["source_name"] = rule.get("source_name", "")
+    res["jurisdiction"] = rule.get("jurisdiction", "")
+    res["severity"] = rule.get("severity", "Medium")
     return res
 
 
