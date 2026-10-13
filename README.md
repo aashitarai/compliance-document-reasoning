@@ -17,9 +17,7 @@
 ### 1. Audit Workspace & Interactive Legal Document Viewer
 > *Split-screen workstation: Textured legal document paper with official seals on the left, and AI compliance reasoning with real-time Cosine Semantic Match meters and clickable quote jumps on the right.*
 
-```markdown
-<!-- REPLACE WITH SCREENSHOT: Audit Workspace (Split Screen Document Canvas & Findings) -->
-![Audit Workspace](docs/screenshots/01_audit_workspace.png)
+```markdown<img width="1914" height="898" alt="image" src="https://github.com/user-attachments/assets/8c65e75e-9265-4adb-a60e-f4b9a18fad72" />
 ```
 
 ---
