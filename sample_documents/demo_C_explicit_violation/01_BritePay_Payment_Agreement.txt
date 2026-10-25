@@ -1,0 +1,30 @@
+RECITALS & PREAMBLE
+This Master Payment Processing Services Agreement ('Agreement') is entered into as of October 14, 2023 ('Effective Date') by and between NovuHealth Global Therapeutics Inc., an enterprise corporation ('Customer'), and BritePay Merchant Operations Ltd., a merchant acquiring and settlement processor ('Processor' or 'Vendor'). WHEREAS Customer operates global clinical therapies and patient billing systems, and Processor provides automated merchant gateway routing and cardholder processing.
+
+
+SECTION 1. DEFINITIONS AND APPLICABILITY
+1.1 'Customer Data' means all personal, cardholder, clinical account, or financial telemetry transmitted to Processor.
+1.2 'Security Incident' means any confirmed unauthorized access, exfiltration, or modification of Customer Data residing on Processor infrastructure.
+
+
+SECTION 4. DATA SECURITY AND CRYPTOGRAPHIC STANDARDS
+4.1 Processor covenants that all payment transaction streams shall be transmitted using TLS 1.3 encryption. Stored cardholder credentials and merchant authorization tokens shall be encrypted at rest using AES-256 bit encryption keys.
+4.2 Processor warrants compliance with PCI-DSS Level 1 service provider standards.
+
+
+SECTION 11. SECURITY INCIDENTS AND BREACH NOTIFICATION (DEFECTIVE SLA)
+11.1 Incident Mitigation: Processor shall maintain automated anomaly detection across all payment gateway endpoints.
+11.2 Forensic Investigation: Following any suspected breach, Processor's internal incident response team shall conduct a preliminary triage within seventy-two (72) hours.
+11.3 Forensic Determination: Processor shall compile a comprehensive forensic dossier prior to issuing any external corporate disclosures.
+11.4 Notification Period: In the event Processor confirms a verified security incident affecting Customer cardholder data or credentials, Processor shall exercise commercially reasonable efforts to notify Customer within ten (10) business days following completion of internal forensic investigation. In no event shall notice be required earlier than seven (7) business days from incident confirmation.
+11.5 Scope of Disclosure: Notification shall include the preliminary nature of incident, volume of records affected, and remediation patch schedules.
+
+
+SECTION 14. AUDIT AND REGULATORY COOPERATION
+14.1 Processor shall provide Customer with an annual executive summary of its PCI-DSS Attestation of Compliance.
+14.2 On-site technical inspections by Customer auditors shall be limited to one inspection per thirty-six (36) month period with sixty (60) days prior written notice.
+
+
+SECTION 18. GOVERNING LAW AND JURISDICTION
+18.1 This Agreement shall be governed by and construed in accordance with the laws of the State of Delaware, without regard to conflict of law principles.
+18.2 In witness whereof, the parties hereto have executed this Agreement by their duly authorized representatives.
