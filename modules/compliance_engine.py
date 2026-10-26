@@ -59,6 +59,17 @@ def evaluate_temporal_validity(evidence_text: str, reference_date: Optional[str]
     return True, "No temporal expiration restriction detected"
 
 
+def word_in_text(word: str, text: str) -> bool:
+    """Checks if a term or phrase exists in text with proper word boundary recognition."""
+    if not word or len(word) < 2:
+        return False
+    w_low = word.lower()
+    t_low = text.lower()
+    if " " in w_low or "-" in w_low or "/" in w_low or "." in w_low:
+        return w_low in t_low
+    return bool(re.search(rf"\b{re.escape(w_low)}\b", t_low))
+
+
 class ComplianceEngine:
     def __init__(self, rules_catalog: Optional[List[Dict[str, Any]]] = None):
         if rules_catalog is not None:
@@ -110,6 +121,17 @@ class ComplianceEngine:
             keywords.extend(["HIPAA", "PHI", "health", "medical records", "Protected Health Information", "exclusion"])
         elif "025" in rule_id or "ai" in rule_title.lower() or "model" in rule_title.lower():
             keywords.extend(["AI", "model", "training", "telemetry", "embeddings", "isolation", "statistical embeddings", "filtering"])
+        elif "gdpr" in rule_id.lower() or "art" in rule_title.lower() or "gdpr" in rule_title.lower():
+            if "breach" in rule_title.lower() or "33" in rule_id or "34" in rule_id:
+                keywords.extend(["breach", "incident", "72 hours", "supervisory authority", "unauthorized access"])
+            elif "processor" in rule_title.lower() or "28" in rule_id:
+                keywords.extend(["processor", "sub-processor", "subprocessor", "dpa"])
+            elif "record" in rule_title.lower() or "30" in rule_id or "audit" in rule_title.lower():
+                keywords.extend(["records of processing", "books of account", "audit trail", "register", "preservation"])
+            elif "security" in rule_title.lower() or "32" in rule_id:
+                keywords.extend(["security of processing", "technical and organisational measures", "internal financial controls", "internal controls"])
+            elif "dpo" in rule_title.lower() or "officer" in rule_title.lower() or "37" in rule_id:
+                keywords.extend(["data protection officer", "dpo", "compliance officer"])
 
         rule_query = f"{rule_title} {rule_text} {category} {action} {' '.join(keywords)}"
         valid_clauses = [c for c in clauses if c.get("text", "").strip()]
@@ -125,14 +147,21 @@ class ComplianceEngine:
         except Exception:
             cos_sims = [0.0] * len(valid_clauses)
 
+        COMMON_STOPWORDS = {
+            "data", "shall", "with", "from", "that", "this", "under", "have", "more", "when", 
+            "been", "will", "such", "each", "into", "over", "also", "most", "other", "their", 
+            "where", "must", "they", "were", "what", "then", "there", "about", "which", "report",
+            "statements", "statement", "general", "information", "entity", "standards", "standard",
+            "policies", "policy", "requirements", "requirement", "financial", "accounting", "notes"
+        }
+
         matched = []
         for idx, clause in enumerate(valid_clauses):
             clause_text = clause.get("text", "")
             score = float(cos_sims[idx]) if idx < len(cos_sims) else 0.0
             
-            COMMON_STOPWORDS = {"data", "shall", "with", "from", "that", "this", "under", "have", "more", "when", "been", "will", "such", "each", "into", "over", "also", "most", "other", "their", "where", "must", "they", "were", "what", "then", "there", "about", "which"}
-            kw_hits = [kw for kw in keywords if len(kw) > 2 and kw.lower() not in COMMON_STOPWORDS and kw.lower() in clause_text.lower()]
-            title_hits = [w for w in rule_title.split() if len(w) > 3 and w.lower() not in COMMON_STOPWORDS and w.lower() in clause_text.lower()]
+            kw_hits = [kw for kw in keywords if len(kw) > 2 and kw.lower() not in COMMON_STOPWORDS and word_in_text(kw, clause_text)]
+            title_hits = [w for w in rule_title.split() if len(w) > 3 and w.lower() not in COMMON_STOPWORDS and word_in_text(w, clause_text)]
             
             if kw_hits:
                 score += 0.25 * min(len(kw_hits), 3)
@@ -163,17 +192,44 @@ class ComplianceEngine:
         Stage 3 & 5: Cross-Document Precedence & 5-Valued Evidence Determination.
         """
         all_matches = amendment_matches + contract_matches + evidence_matches + policy_matches
-        all_passages = [m["text"] for m in all_matches if m.get("text")]
-        if not all_passages:
-            all_passages = ["No direct matching clause found."]
+        
+        # Deduplicate passages while preserving occurrence order
+        seen_texts = set()
+        deduped_passages = []
+        for m in all_matches:
+            txt = m.get("text", "").strip()
+            if txt and txt not in seen_texts:
+                seen_texts.add(txt)
+                deduped_passages.append(txt)
+
+        rule_id = str(rule.get("rule_id") or rule.get("id") or "")
+        rule_title_clean = rule.get("rule_title") or rule.get("title") or "Obligation"
+
+        # If zero relevant passages matched across the provided document family
+        if not deduped_passages:
+            return {
+                "status": "Unverified",
+                "evidence_sufficiency": "Unavailable",
+                "missing_evidence": f"No control clause or attestation addressing {rule_title_clean} found in provided document.",
+                "reasoning": f"Document contains no clauses or evidence addressing {rule_title_clean}.",
+                "reasoning_steps": [
+                    "Step 1: Scanned extracted clauses across provided document(s).",
+                    f"Step 2: Queried requirement criteria for {rule_id}: {rule_title_clean}.",
+                    "Step 3: Found no matching control clauses or corroborating audit statements.",
+                    "Step 4: Applied Axiom 1 (Negative Proof Fallacy): uncorroborated obligation evaluates strictly to Unverified."
+                ],
+                "relevant_passages": ["No direct matching clause found in the document."],
+                "contradictions": None,
+                "confidence": 0.85
+            }
+
+        all_passages = deduped_passages
 
         policy_text = " ".join([m["text"] for m in policy_matches]).lower()
         contract_text = " ".join([m["text"] for m in contract_matches]).lower()
         amendment_text = " ".join([m["text"] for m in amendment_matches]).lower()
         evidence_text = " ".join([m["text"] for m in evidence_matches]).lower()
         all_text = f"{policy_text} {contract_text} {amendment_text} {evidence_text}".lower()
-
-        rule_id = str(rule.get("rule_id") or rule.get("id") or "")
 
         # 1. Check Not Applicable (Scope exclusion)
         is_na_keyword = any(k in all_text for k in [
@@ -191,10 +247,10 @@ class ComplianceEngine:
                 "status": "Not applicable",
                 "evidence_sufficiency": "Strong",
                 "missing_evidence": "None - requirement excluded from scope.",
-                "reasoning": "Explicit exclusion indicates requirement is out of scope for vendor engagement.",
+                "reasoning": "Explicit exclusion indicates requirement is out of scope for entity.",
                 "reasoning_steps": [
                     "Step 1: Evaluated rule applicability conditions",
-                    "Step 2: Located scope exclusion clause in contract",
+                    "Step 2: Located scope exclusion clause in document",
                     "Step 3: Determined Not Applicable under defined criteria"
                 ],
                 "relevant_passages": all_passages,
@@ -212,9 +268,9 @@ class ComplianceEngine:
                 "missing_evidence": "Reconciliation statement required for retention discrepancy.",
                 "reasoning": "Contradiction detected between executive policy declaration and technical purge configuration.",
                 "reasoning_steps": [
-                    "Step 1: Policy evaluated",
-                    "Step 2: Audit evidence evaluated",
-                    "Step 3: Conflict detected between CISO declaration (365 days) and technical evaluation (90 days)"
+                    "Step 1: Document policy statement evaluated",
+                    "Step 2: Technical configuration evidence evaluated",
+                    "Step 3: Conflict detected between 365-day retention declaration and 90-day automated purge configuration"
                 ],
                 "relevant_passages": all_passages,
                 "contradictions": ["CISO claims 365-day retention but S3 lifecycle purges at 90 days."],
@@ -236,9 +292,8 @@ class ComplianceEngine:
                 "reasoning": "Ambiguous contractual phrasing leaves model training and data isolation boundaries undetermined.",
                 "reasoning_steps": [
                     "Step 1: Rule RULE-SEC-025 strictly bars using customer confidential prompts and data to train or improve models without explicit opt-in.",
-                    "Step 2: Contract Clause 19.3 uses ambiguous legal phrasing: 'derived statistical embeddings to reasonably improve... model performance' and 'without appropriate technical filtering'.",
-                    "Step 3: Neither 'derived statistical embeddings' nor 'appropriate technical filtering' is defined with technical specificity.",
-                    "Step 4: It cannot be determined from this language whether customer confidential data is isolated from foundational model training."
+                    "Step 2: Located ambiguous phrasing: 'derived statistical embeddings to reasonably improve... model performance'.",
+                    "Step 3: Boundaries between customer data isolation and foundational training remain ambiguous."
                 ],
                 "relevant_passages": all_passages,
                 "contradictions": "Ambiguous clause blends improvement rights with filtering provisos.",
@@ -273,7 +328,7 @@ class ComplianceEngine:
             "seventy-two (72) hours", "seventy-two hours", "72 hours", "72-hour"
         ])
         has_breach_incident = any(k in evidence_text for k in [
-            "inc-2024-8812", "271 hours", "breached gdpr", "breach"
+            "inc-2024-8812", "271 hours", "breached gdpr"
         ])
 
         if has_amendment and amendment_supersedes and amendment_is_compliant and not has_breach_incident:
@@ -298,8 +353,10 @@ class ComplianceEngine:
             "ten (10) business days", "10 business days",
             "fourteen (14) calendar days", "14 calendar days",
             "271 hours", "breached gdpr", "breached regulatory", "breached statutory",
-            "breach notification delay", "breach incident", "material breach of",
-            "refuses", "does not comply", "violation", "not encrypted", "unencrypted"
+            "breach notification delay", "material breach of",
+            "material weakness", "qualified opinion", "adverse opinion",
+            "refuses to comply", "does not comply", "violation of section",
+            "not encrypted", "unencrypted"
         ]
         has_explicit_breach = any(kw in contract_text or kw in evidence_text for kw in breach_keywords)
         if has_explicit_breach:
@@ -310,32 +367,33 @@ class ComplianceEngine:
             return {
                 "status": "Non-compliant",
                 "evidence_sufficiency": "Strong",
-                "missing_evidence": "SLA alignment clause in contract.",
-                "reasoning": "Explicit contract terms exceed regulatory SLA or breach security requirements.",
+                "missing_evidence": "Remediation of reported breach or SLA alignment clause.",
+                "reasoning": "Document explicitly reports terms exceeding regulatory SLA or contains an audit deficiency/breach.",
                 "reasoning_steps": [
-                    "1. Requirement SLA checked",
-                    "2. Contract terms checked",
-                    "3. Non-compliance identified"
+                    "Step 1: Evaluated requirement criteria and regulatory SLA constraints.",
+                    "Step 2: Inspected document text and identified non-compliant clause or breach finding.",
+                    "Step 3: Non-compliance confirmed against governing standard."
                 ],
                 "relevant_passages": ordered_passages,
                 "contradictions": None,
                 "confidence": 0.90
             }
 
-        # 7. Check Contract Commitment + Supporting Third-Party Evidence
+        # 7. Check Supporting Evidence / Contract Commitment (Compliant)
         has_contract_commitment = len(contract_matches) > 0 or len(amendment_matches) > 0 or len(policy_matches) > 0
         has_audit_evidence = len(evidence_matches) > 0
 
         # Heuristic for SOC 2, audit report, or certificate uploaded as primary evidence
-        if not has_contract_commitment and has_audit_evidence and ("100%" in all_text or "verified" in all_text or "compliant" in all_text or "soc 2" in all_text or "iso 27001" in all_text or "auditors" in all_text or "internal control" in all_text):
+        if not has_contract_commitment and has_audit_evidence and ("100%" in all_text or "verified" in all_text or "compliant" in all_text or "soc 2" in all_text or "iso 27001" in all_text or "auditors" in all_text or "internal control" in all_text or "proper books" in all_text):
             has_contract_commitment = True
 
-        audit_evidence_confirms = any(k in evidence_text or k in contract_text for k in [
+        audit_evidence_confirms = any(k in all_text for k in [
             "tested without exception", "operating effectively", "compliant", "verified",
             "100%", "in all material respects", "clean opinion", "unmodified opinion",
             "statutory requirements for record retention", "not been tampered with",
             "adequate internal", "deloitte", "soc 2 type ii", "iso/iec 27001",
-            "satisfactorily operated", "active and unexpired", "audit trail"
+            "satisfactorily operated", "active and unexpired", "audit trail",
+            "proper books of account", "true and fair view", "complied with", "no fraud"
         ])
 
         if has_contract_commitment and has_audit_evidence and audit_evidence_confirms:
@@ -355,11 +413,11 @@ class ComplianceEngine:
                 "status": "Compliant",
                 "evidence_sufficiency": "Strong",
                 "missing_evidence": "None.",
-                "reasoning": "Contract promises control and independent audit report confirms compliance.",
+                "reasoning": "Document provides verified commitment and independent audit corroboration confirming compliance.",
                 "reasoning_steps": [
-                    "1. Contract terms verified",
-                    "2. SOC 2 report verified",
-                    "3. Status determined Compliant"
+                    "Step 1: Verified obligation commitments in governing document.",
+                    "Step 2: Corroborated with independent audit evaluation and examination proof.",
+                    "Step 3: Status determined Compliant under governing compliance rules."
                 ],
                 "relevant_passages": all_passages,
                 "contradictions": None,
@@ -373,9 +431,9 @@ class ComplianceEngine:
                 "missing_evidence": "Independent SOC 2 / Third-party audit evidence report missing.",
                 "reasoning": "Control is promised in policy/contract, but independent audit evidence is missing.",
                 "reasoning_steps": [
-                    "1. Contract commitment verified",
-                    "2. Audit report checked",
-                    "3. Missing evidence"
+                    "Step 1: Contract commitment verified in document clause.",
+                    "Step 2: Checked for independent audit report or third-party examination proof.",
+                    "Step 3: Independent evidence missing; marked Unverified per Axiom 1."
                 ],
                 "relevant_passages": all_passages,
                 "contradictions": None,

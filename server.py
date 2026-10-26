@@ -331,6 +331,46 @@ def get_rules():
     return []
 
 
+UPLOADED_SESSIONS = {}
+
+
+def extract_company_name_from_text(text: str, filename: str = "") -> str:
+    """Infers the audited entity's legal name from document header lines or filename."""
+    if not text:
+        return filename.rsplit(".", 1)[0].replace("_", " ").title() if filename else "Audited Entity"
+    
+    lines = [line.strip() for line in text[:3000].split("\n") if line.strip()]
+    
+    # 1. Check for 'TO THE MEMBERS OF <COMPANY>'
+    for idx, line in enumerate(lines):
+        if "to the members of" in line.lower():
+            if idx + 1 < len(lines):
+                next_line = lines[idx + 1].strip()
+                if len(next_line) > 3 and not next_line.lower().startswith("report"):
+                    return next_line.title()
+            m = re.search(r'to the members of\s+([A-Za-z0-9\s,\.\-&]{3,80})', line, re.IGNORECASE)
+            if m:
+                return m.group(1).strip().title()
+
+    # 2. Check for 'INDEPENDENT AUDITORS REPORT.* OF <COMPANY>'
+    for line in lines:
+        m = re.search(r'(?:REPORT ON|AUDIT OF|STATEMENTS OF)\s+([A-Za-z0-9\s,\.\-&]{3,80})', line, re.IGNORECASE)
+        if m:
+            clean = m.group(1).strip()
+            if len(clean) > 3:
+                return clean.title()
+
+    # 3. Check first 8 non-empty lines for corporate identifiers
+    for line in lines[:8]:
+        if any(term in line.lower() for term in ["limited", "ltd", "corporation", "corp", "inc", "technologies", "private", "pvt", "gmbh", "s.a."]):
+            if len(line) < 80 and not line.lower().startswith("report") and not line.lower().startswith("section"):
+                return line.title()
+
+    if filename:
+        return filename.rsplit(".", 1)[0].replace("_", " ").replace("-", " ").title()
+    return "Audited Corporate Entity"
+
+
 @app.post("/api/audit-company-vendor")
 async def audit_company_vendor(
     request: Request,
@@ -345,6 +385,13 @@ async def audit_company_vendor(
             vendor_id = vendor_id or body.get("vendor_id")
         except Exception:
             pass
+
+    # If org_id belongs to an uploaded session, return cached uploaded session data
+    if org_id and org_id in UPLOADED_SESSIONS:
+        return UPLOADED_SESSIONS[org_id]
+    for k, v in UPLOADED_SESSIONS.items():
+        if org_id and (k in org_id or org_id in k):
+            return v
 
     # Default to first organization if omitted
     if not org_id:
@@ -423,7 +470,7 @@ def load_demo(demo_id: str, org_name: Optional[str] = None, vendor_name: Optiona
 async def upload_and_analyze(
     files: List[UploadFile] = File(...),
     org_name: str = Form("Enterprise Client"),
-    vendor_name: str = Form("Target Vendor"),
+    vendor_name: str = Form("Direct Statutory Audit (124 Rules)"),
     case_name: str = Form("CASE-CUSTOM-AUDIT")
 ):
     """Process uploaded multi-format files and run the compliance reasoning engine."""
@@ -439,9 +486,17 @@ async def upload_and_analyze(
             doc_info["page_image_url"] = "data:image/png;base64," + base64.b64encode(content).decode("utf-8")
         parsed_docs.append(doc_info)
 
-    case_name_str = case_name if isinstance(case_name, str) else "CASE-CUSTOM-AUDIT"
-    org_name_str = org_name if isinstance(org_name, str) else "Enterprise Client"
-    vendor_name_str = vendor_name if isinstance(vendor_name, str) else "Target Vendor"
+    first_text = parsed_docs[0]["full_text"] if parsed_docs else ""
+    first_fname = parsed_docs[0]["filename"] if parsed_docs else ""
+
+    if not org_name or org_name in ["Enterprise Client", "Client Organization", ""]:
+        org_name_str = extract_company_name_from_text(first_text, first_fname)
+    else:
+        org_name_str = org_name
+
+    vendor_name_str = "Direct Statutory Audit (124 Rules)"
+    upload_org_id = f"ORG-UPLOAD-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    case_name_str = case_name if isinstance(case_name, str) and case_name != "CASE-CUSTOM-AUDIT" else f"AUDIT-{datetime.now().strftime('%Y%m%d-%H%M')}"
 
     rules_cat = load_rules_catalogue()
     analysis = analyze_uploaded_session(
@@ -452,13 +507,47 @@ async def upload_and_analyze(
         case_name=case_name_str
     )
 
-    return {
+    result_payload = {
+        "org_id": upload_org_id,
         "organization": org_name_str,
         "vendor": vendor_name_str,
         "case_name": case_name_str,
         "documents": parsed_docs,
         "analysis": analysis
     }
+
+    UPLOADED_SESSIONS[upload_org_id] = result_payload
+    UPLOADED_SESSIONS[case_name_str] = result_payload
+
+    # Prepend to ORGANIZATIONS_CATALOG so dropdowns and APIs recognize this session
+    ORGANIZATIONS_CATALOG.insert(0, {
+        "org_id": upload_org_id,
+        "name": org_name_str,
+        "sector": "Corporate Audit Entity",
+        "jurisdiction": "Governing Compliance Standards (124 Rules)",
+        "governing_policy": {
+            "title": parsed_docs[0]["filename"] if parsed_docs else "Audited Document",
+            "type": "audit_report",
+            "filename": parsed_docs[0]["filename"] if parsed_docs else "document.pdf",
+            "relative_path": "",
+            "summary": "Direct Statutory Audit Evaluation"
+        },
+        "vendors": [
+            {
+                "vendor_id": "VEN-STANDALONE",
+                "name": "Direct Statutory Audit (124 Rules)",
+                "scenario_id": upload_org_id,
+                "contract": {
+                    "title": f"Standalone Document: {parsed_docs[0]['filename'] if parsed_docs else 'Document'}",
+                    "filename": parsed_docs[0]["filename"] if parsed_docs else "document.pdf",
+                    "relative_path": ""
+                },
+                "evidence": []
+            }
+        ]
+    })
+
+    return result_payload
 
 
 @app.get("/api/evaluation")

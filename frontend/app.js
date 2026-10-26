@@ -168,8 +168,7 @@ const state = {
 };
 
 // Initialize Application on Page Load
-document.addEventListener('DOMContentLoaded', () => {
-    setupTabNavigation();
+function initApp() {
     setupDropZone();
     
     // 1. Immediately populate select elements and vault ribbon synchronously
@@ -181,7 +180,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // 3. Load live server catalog and secondary data in background
     loadOrganizationsData();
     loadInitialData();
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
 
 /**
  * Tab Switching Controller
@@ -275,14 +280,37 @@ function onCompanySelected() {
 
     const sectorDesc = document.getElementById('company-sector-desc');
     if (sectorDesc) {
-        sectorDesc.innerText = `${org.sector} • Jurisdiction: ${org.jurisdiction}`;
+        sectorDesc.innerText = `${org.sector || 'Enterprise Organization'} • Jurisdiction: ${org.jurisdiction || 'Audited'}`;
+    }
+
+    // If it's a custom uploaded case, restore directly from local session cache
+    if (state.selectedOrgId && state.selectedOrgId.startsWith('ORG-UPLOAD-')) {
+        const vendSelect = document.getElementById('select-vendor');
+        if (vendSelect) {
+            vendSelect.innerHTML = `<option value="VEN-STANDALONE">Direct Statutory Audit (124 Rules)</option>`;
+        }
+        const vendDesc = document.getElementById('vendor-contract-desc');
+        if (vendDesc) {
+            vendDesc.innerText = `Standalone Document • Evaluated directly against 124 compliance rules (No vendor required)`;
+        }
+        if (state.customUploadCases && state.customUploadCases[state.selectedOrgId]) {
+            state.currentCaseData = state.customUploadCases[state.selectedOrgId];
+            state.currentDocIndex = 0;
+            renderCompanyVaultRibbon(org);
+            renderDocumentFamilyTabs();
+            renderActiveDocument();
+            renderFindingsPanel();
+            updateCaseHeaderSummary();
+            updateDashboardView();
+            return;
+        }
     }
 
     // Populate Vendor dropdown for this company
     const vendSelect = document.getElementById('select-vendor');
     if (vendSelect && org.vendors && org.vendors.length > 0) {
         vendSelect.innerHTML = org.vendors.map(v => `
-            <option value="${v.vendor_id}">${v.name} — ${v.contract.title}</option>
+            <option value="${v.vendor_id}">${v.name} — ${v.contract?.title || 'Contract'}</option>
         `).join('');
 
         state.selectedVendorId = org.vendors[0].vendor_id;
@@ -308,16 +336,21 @@ function onVendorSelected() {
     const vendor = org.vendors ? org.vendors.find(v => v.vendor_id === state.selectedVendorId) : null;
     if (vendor) {
         const evText = vendor.evidence && vendor.evidence.length > 0 
-            ? vendor.evidence.map(e => e.title).join(', ')
+            ? vendor.evidence.map(e => e.title || 'Evidence').join(', ')
             : 'None (Evidence Pending)';
 
         const vendDesc = document.getElementById('vendor-contract-desc');
         if (vendDesc) {
-            vendDesc.innerText = `Contract: ${vendor.contract.title} • Evidence: ${evText}`;
+            vendDesc.innerText = `Contract: ${vendor.contract?.title || 'Contract'} • Evidence: ${evText}`;
         }
     }
 
     renderCompanyVaultRibbon(org);
+
+    // If custom upload, do not call server demo runner
+    if (state.selectedOrgId && state.selectedOrgId.startsWith('ORG-UPLOAD-')) {
+        return;
+    }
 
     // Automatically execute the cross-document audit for the selected company & vendor!
     executeAuditForSelected();
@@ -328,37 +361,78 @@ function onVendorSelected() {
  */
 function renderCompanyVaultRibbon(org) {
     const ribbon = document.getElementById('company-vault-ribbon');
-    if (!ribbon) return;
+    if (!ribbon || !org) return;
 
-    const vendor = org.vendors.find(v => v.vendor_id === state.selectedVendorId);
-    let html = `
-        <span class="text-xs font-semibold text-slate-400 mr-1">Download Company Files:</span>
-        <a href="/api/download-file?path=${encodeURIComponent(org.governing_policy.relative_path)}" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30 transition flex items-center space-x-1.5 shadow-sm" download title="Download Policy File">
-            <i class="fa-solid fa-file-shield text-blue-400"></i>
-            <span>Policy: ${org.governing_policy.title}</span>
-            <i class="fa-solid fa-download text-[10px] ml-1 opacity-70"></i>
-        </a>
-    `;
-
-    if (vendor && vendor.contract) {
-        html += `
-            <a href="/api/download-file?path=${encodeURIComponent(vendor.contract.relative_path)}" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 transition flex items-center space-x-1.5 shadow-sm" download title="Download Vendor Contract">
-                <i class="fa-solid fa-file-contract text-indigo-400"></i>
-                <span>Contract: ${vendor.contract.title}</span>
-                <i class="fa-solid fa-download text-[10px] ml-1 opacity-70"></i>
-            </a>
+    if (org.org_id && org.org_id.startsWith('ORG-UPLOAD-')) {
+        const docTitle = org.governing_policy?.title || 'Company Audit Report';
+        ribbon.innerHTML = `
+            <span class="text-xs font-semibold text-slate-400 mr-1">Audited Corporate Evidence:</span>
+            <span class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-500/10 text-blue-300 border border-blue-500/30 flex items-center space-x-1.5 shadow-sm">
+                <i class="fa-solid fa-file-invoice text-blue-400"></i>
+                <span>Document: ${escapeHtml(docTitle)}</span>
+            </span>
+            <button onclick="downloadCurrentDocument()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition flex items-center space-x-1.5 shadow-sm" title="Download Audited File">
+                <i class="fa-solid fa-download text-emerald-400"></i>
+                <span>Download Report</span>
+            </button>
         `;
+        return;
     }
 
-    if (vendor && vendor.evidence) {
-        vendor.evidence.forEach(ev => {
+    const vendor = org.vendors ? org.vendors.find(v => v.vendor_id === state.selectedVendorId) : null;
+    let html = `
+        <span class="text-xs font-semibold text-slate-400 mr-1">Active Portfolio Files:</span>
+    `;
+
+    if (org.governing_policy) {
+        if (org.governing_policy.relative_path) {
             html += `
-                <a href="/api/download-file?path=${encodeURIComponent(ev.relative_path)}" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition flex items-center space-x-1.5 shadow-sm" download title="Download Evidence File">
-                    <i class="fa-solid fa-file-circle-check text-emerald-400"></i>
-                    <span>Evidence: ${ev.title}</span>
+                <a href="/api/download-file?path=${encodeURIComponent(org.governing_policy.relative_path)}" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30 transition flex items-center space-x-1.5 shadow-sm" download title="Download Policy File">
+                    <i class="fa-solid fa-file-shield text-blue-400"></i>
+                    <span>Policy: ${org.governing_policy.title}</span>
                     <i class="fa-solid fa-download text-[10px] ml-1 opacity-70"></i>
                 </a>
             `;
+        } else {
+            html += `
+                <span class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-500/10 text-blue-300 border border-blue-500/30 flex items-center space-x-1.5 shadow-sm">
+                    <i class="fa-solid fa-file-shield text-blue-400"></i>
+                    <span>${org.governing_policy.title || 'Policy Document'}</span>
+                </span>
+            `;
+        }
+    }
+
+    if (vendor && vendor.contract) {
+        if (vendor.contract.relative_path) {
+            html += `
+                <a href="/api/download-file?path=${encodeURIComponent(vendor.contract.relative_path)}" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 transition flex items-center space-x-1.5 shadow-sm" download title="Download Vendor Contract">
+                    <i class="fa-solid fa-file-contract text-indigo-400"></i>
+                    <span>Contract: ${vendor.contract.title}</span>
+                    <i class="fa-solid fa-download text-[10px] ml-1 opacity-70"></i>
+                </a>
+            `;
+        } else {
+            html += `
+                <span class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 flex items-center space-x-1.5 shadow-sm">
+                    <i class="fa-solid fa-file-contract text-indigo-400"></i>
+                    <span>${vendor.contract.title || 'Vendor Contract'}</span>
+                </span>
+            `;
+        }
+    }
+
+    if (vendor && vendor.evidence && vendor.evidence.length > 0) {
+        vendor.evidence.forEach(ev => {
+            if (ev.relative_path) {
+                html += `
+                    <a href="/api/download-file?path=${encodeURIComponent(ev.relative_path)}" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition flex items-center space-x-1.5 shadow-sm" download title="Download Evidence File">
+                        <i class="fa-solid fa-file-circle-check text-emerald-400"></i>
+                        <span>Evidence: ${ev.title}</span>
+                        <i class="fa-solid fa-download text-[10px] ml-1 opacity-70"></i>
+                    </a>
+                `;
+            }
         });
     }
 
@@ -370,6 +444,19 @@ function renderCompanyVaultRibbon(org) {
  */
 async function executeAuditForSelected() {
     state.currentDocIndex = 0;
+
+    // If an uploaded document is currently active, preserve and re-render the uploaded dossier
+    if (state.selectedOrgId && state.selectedOrgId.startsWith('ORG-UPLOAD-')) {
+        if (state.customUploadCases && state.customUploadCases[state.selectedOrgId]) {
+            state.currentCaseData = state.customUploadCases[state.selectedOrgId];
+            renderDocumentFamilyTabs();
+            renderActiveDocument();
+            renderFindingsPanel();
+            updateCaseHeaderSummary();
+            updateDashboardView();
+            return;
+        }
+    }
 
     const formData = new FormData();
     formData.append('org_id', state.selectedOrgId);
@@ -576,15 +663,22 @@ function renderFindingsPanel() {
             isMissing ? 'text-amber-400' :
             isCompliant ? 'text-emerald-400' : 'text-blue-400';
 
-        const quoteSectionTitle = isViolation ? 'Quoted Violation Excerpt (Click to View in Document)' :
-            isConflict ? 'Quoted Contradiction / Ambiguity (Click to View)' :
-            isMissing ? 'Contract Covenant (Supporting Audit Report Missing)' :
-            isCompliant ? 'Verified Contract / Audit Evidence Quote (Click to View)' : 'Relevant Excerpt';
+        const isUploadedCase = Boolean(state.selectedOrgId && state.selectedOrgId.startsWith('ORG-UPLOAD-'));
+
+        const quoteSectionTitle = isViolation 
+            ? (isUploadedCase ? 'Quoted Adverse Deficiency Line (Click to View in Document)' : 'Quoted Violation Excerpt (Click to View in Document)')
+            : isConflict 
+            ? 'Quoted Contradiction / Ambiguity (Click to View)'
+            : isMissing 
+            ? (isUploadedCase ? 'Audited Document Coverage (Clause Missing in Report)' : 'Contract Covenant (Supporting Audit Report Missing)')
+            : isCompliant 
+            ? (isUploadedCase ? 'Quoted Company Audit Excerpt (Click to View in Document)' : 'Verified Contract / Audit Evidence Quote (Click to View)')
+            : 'Relevant Excerpt';
 
         // Build passages HTML with Click-to-Jump functionality
         const passages = finding.relevant_passages || [];
         const passagesHtml = passages.map((p) => {
-            const isViTxt = isViolation && (p.toLowerCase().includes('10 business days') || p.toLowerCase().includes('ten') || p.toLowerCase().includes('271 hours') || p.toLowerCase().includes('expired') || p.toLowerCase().includes('breach'));
+            const isViTxt = isViolation && (p.toLowerCase().includes('10 business days') || p.toLowerCase().includes('ten') || p.toLowerCase().includes('271 hours') || p.toLowerCase().includes('expired') || p.toLowerCase().includes('breach') || p.toLowerCase().includes('deficiency') || p.toLowerCase().includes('weakness'));
             return `
             <div onclick="jumpToDocumentPassage('${escapeQuote(p)}')" class="trace-quote cursor-pointer hover:bg-slate-800/80 transition my-1.5 p-2.5 rounded-lg border ${
                 isViTxt ? 'border-rose-500/40 bg-rose-500/15 text-rose-200 shadow-sm' :
@@ -610,6 +704,7 @@ function renderFindingsPanel() {
         const semanticPct = finding.semantic_score_pct || (finding.semantic_similarity ? Math.round(finding.semantic_similarity * 100) : 88);
         const cosineVal = finding.semantic_similarity ? Number(finding.semantic_similarity).toFixed(3) : (semanticPct / 100).toFixed(3);
         const plainSummary = finding.plain_english_summary || finding.reasoning || finding.reasoning_steps?.[0] || 'Assessment complete.';
+        const statutoryRuleText = finding.rule_text || finding.required_action_or_control || finding.rule_title || 'Governing Compliance Mandate';
 
         card.innerHTML = `
             <div class="flex items-start justify-between gap-2 mb-2">
@@ -628,6 +723,21 @@ function renderFindingsPanel() {
                 ${escapeHtml(plainSummary)}
             </div>
 
+            <!-- Governing Statutory Rule Mandate (Quotes Compliance Rule) -->
+            <div class="bg-blue-950/40 p-3 rounded-lg border border-blue-500/25 text-xs text-blue-200 leading-relaxed my-2">
+                <div class="text-[10px] font-bold uppercase text-blue-400 mb-1 flex items-center justify-between">
+                    <span class="flex items-center"><i class="fa-solid fa-scale-balanced mr-1.5 text-blue-400"></i> Statutory Rule Mandate</span>
+                    <span class="font-mono text-[9.5px] text-blue-300/80 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">${escapeHtml(finding.source_name || 'Standard')} • ${escapeHtml(finding.jurisdiction || 'Statutory')}</span>
+                </div>
+                <div class="font-serif italic text-blue-100 text-[11.5px] leading-relaxed">
+                    “${escapeHtml(statutoryRuleText)}”
+                </div>
+                ${finding.required_action_or_control && finding.rule_text && finding.required_action_or_control !== finding.rule_text ? `
+                <div class="mt-1.5 pt-1.5 border-t border-blue-500/20 text-[10.5px] text-blue-300/90 font-sans">
+                    <strong class="text-blue-200 font-mono text-[10px] uppercase">Required Control:</strong> ${escapeHtml(finding.required_action_or_control)}
+                </div>` : ''}
+            </div>
+
             <!-- Semantic Match Progress Meter (AIML Vector Alignment) -->
             <div class="space-y-1.5 my-2.5 bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/60">
                 <div class="flex items-center justify-between text-[11px]">
@@ -641,12 +751,13 @@ function renderFindingsPanel() {
                 </div>
             </div>
 
-            <!-- Traceable Passages Section -->
+            <!-- Quoted Company Document Excerpt (Audited Text Citation) -->
             <div class="my-2.5">
-                <span class="text-[10px] uppercase ${quoteBadgeClass} block mb-1 font-semibold flex items-center">
-                    <i class="fa-solid fa-quote-left mr-1.5"></i> ${quoteSectionTitle}
+                <span class="text-[10px] uppercase ${quoteBadgeClass} block mb-1 font-semibold flex items-center justify-between">
+                    <span class="flex items-center"><i class="fa-solid fa-quote-left mr-1.5"></i> ${quoteSectionTitle}</span>
+                    <span class="text-[10px] font-mono text-slate-400 font-normal">Click quote to view in document</span>
                 </span>
-                ${passagesHtml || '<p class="text-xs text-slate-500 italic">No direct clause text retrieved.</p>'}
+                ${passagesHtml || '<p class="text-xs text-slate-500 italic">No direct matching clause found.</p>'}
             </div>
 
             <!-- Expandable Reasoning Steps -->
@@ -1165,78 +1276,151 @@ function selectUserRole(name, role, initials) {
 }
 
 /**
- * Drag & Drop Custom File Upload Handlers
+ * Drag & Drop and File Picker Ingestion Handlers
  */
+let selectedUploadFiles = [];
+
 function setupDropZone() {
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('modal-file-input');
-    if (!dropZone || !fileInput) return;
+    if (!fileInput) return;
 
-    dropZone.onclick = (e) => {
-        if (e.target !== fileInput) {
-            fileInput.click();
-        }
-    };
-
+    // Direct change event on file input
     fileInput.onchange = (e) => {
-        handleFilesSelected(Array.from(e.target.files));
-    };
-
-    dropZone.ondragover = (e) => {
-        e.preventDefault();
-        dropZone.classList.add('border-blue-500');
-    };
-
-    dropZone.ondragleave = () => {
-        dropZone.classList.remove('border-blue-500');
-    };
-
-    dropZone.ondrop = (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('border-blue-500');
-        if (e.dataTransfer.files) {
-            handleFilesSelected(Array.from(e.dataTransfer.files));
+        if (e.target.files && e.target.files.length > 0) {
+            handleFilesSelected(Array.from(e.target.files));
         }
     };
+
+    if (dropZone) {
+        // Drag & drop visual feedback
+        const highlight = () => {
+            dropZone.classList.add('border-blue-400', 'bg-slate-900/90');
+            dropZone.classList.remove('border-slate-600');
+        };
+        const unhighlight = () => {
+            dropZone.classList.remove('border-blue-400', 'bg-slate-900/90');
+            if (!selectedUploadFiles || selectedUploadFiles.length === 0) {
+                dropZone.classList.add('border-slate-600');
+            }
+        };
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                highlight();
+            }, false);
+        });
+
+        ['dragleave', 'dragend'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                unhighlight();
+            }, false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            unhighlight();
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files;
+                handleFilesSelected(Array.from(e.dataTransfer.files));
+            }
+        }, false);
+    }
 }
 
-let selectedUploadFiles = [];
-
 function handleFilesSelected(files) {
-    selectedUploadFiles = files;
+    if (!files || files.length === 0) return;
+    selectedUploadFiles = Array.from(files);
     const container = document.getElementById('modal-selected-files');
-    if (!container) return;
-    container.innerHTML = files.map(f => `<div>📄 ${escapeHtml(f.name)} (${(f.size / 1024).toFixed(1)} KB)</div>`).join('');
+    const dropZone = document.getElementById('drop-zone');
+
+    if (dropZone) {
+        dropZone.classList.add('border-emerald-500', 'bg-emerald-950/20');
+        dropZone.classList.remove('border-slate-600', 'border-blue-400');
+    }
+
+    if (container) {
+        container.innerHTML = `
+            <div class="p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs">
+                <div class="font-bold flex items-center justify-between mb-1.5 pb-1 border-b border-emerald-500/20">
+                    <span><i class="fa-solid fa-circle-check text-emerald-400 mr-1.5"></i> ${selectedUploadFiles.length} File(s) Selected</span>
+                    <span class="text-[10px] uppercase font-mono tracking-wider bg-emerald-500/20 px-2 py-0.5 rounded text-emerald-300">Ready to Ingest</span>
+                </div>
+                <div class="space-y-1 font-mono text-[11px] max-h-28 overflow-y-auto">
+                    ${selectedUploadFiles.map(f => `
+                        <div class="flex items-center justify-between py-0.5">
+                            <span class="truncate max-w-[320px]"><i class="fa-solid fa-file-lines mr-1.5 text-emerald-400"></i>${escapeHtml(f.name)}</span>
+                            <span class="text-slate-400 text-[10px] ml-2 font-sans">${(f.size / 1024).toFixed(1)} KB</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // Auto-fill vendor name from first uploaded document filename
+    const vendorInput = document.getElementById('modal-vendor-name');
+    if (vendorInput && (vendorInput.value === 'Target Vendor' || !vendorInput.value)) {
+        const cleanName = selectedUploadFiles[0].name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+        vendorInput.value = cleanName;
+    }
 }
 
 function openUploadModal() {
-    document.getElementById('upload-modal')?.classList.remove('hidden');
+    const modal = document.getElementById('upload-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        setupDropZone();
+    }
 }
 
 function closeUploadModal() {
-    document.getElementById('upload-modal')?.classList.add('hidden');
+    const modal = document.getElementById('upload-modal');
+    if (modal) modal.classList.add('hidden');
     selectedUploadFiles = [];
     const container = document.getElementById('modal-selected-files');
     if (container) container.innerHTML = '';
+    const fileInput = document.getElementById('modal-file-input');
+    if (fileInput) fileInput.value = '';
+    const dropZone = document.getElementById('drop-zone');
+    if (dropZone) {
+        dropZone.classList.remove('border-emerald-500', 'bg-emerald-950/20', 'border-blue-400');
+        dropZone.classList.add('border-slate-600');
+    }
 }
 
 async function submitUploadAndAnalyze() {
-    if (selectedUploadFiles.length === 0) {
-        alert('Please select at least one document (PDF, DOCX, TXT, or Image).');
+    if (!selectedUploadFiles || selectedUploadFiles.length === 0) {
+        alert('Please select or drop at least one document (PDF, DOCX, TXT, or Image).');
         return;
     }
 
+    const submitBtn = document.getElementById('btn-submit-upload');
+    const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Ingesting & Reasoning...`;
+    }
+
     const org = document.getElementById('modal-org-name')?.value || 'Client Organization';
-    const ven = document.getElementById('modal-vendor-name')?.value || selectedUploadFiles[0].name.replace(/\.[^/.]+$/, '');
+    const ven = document.getElementById('modal-vendor-name')?.value || (selectedUploadFiles[0] ? selectedUploadFiles[0].name.replace(/\.[^/.]+$/, '') : 'Target Vendor');
     const caseName = `CASE-UPLOAD-${Date.now().toString().slice(-4)}`;
 
+    // Keep safe copy of files and names before modal close
+    const uploadedFilesCopy = Array.from(selectedUploadFiles);
+    const primaryDocName = (uploadedFilesCopy[0] && uploadedFilesCopy[0].name) || 'uploaded_document.pdf';
+    const totalFilesCount = uploadedFilesCopy.length;
+
     const formData = new FormData();
-    selectedUploadFiles.forEach(f => formData.append('files', f));
+    uploadedFilesCopy.forEach(f => formData.append('files', f));
     formData.append('org_name', org);
     formData.append('vendor_name', ven);
     formData.append('case_name', caseName);
-
-    closeUploadModal();
 
     try {
         const res = await fetch('/api/upload-and-analyze', {
@@ -1244,48 +1428,73 @@ async function submitUploadAndAnalyze() {
             body: formData
         });
 
-        if (!res.ok) throw new Error('Document analysis failed');
+        if (!res.ok) throw new Error('Document analysis failed with server response ' + res.status);
         const data = await res.json();
+        
         state.currentCaseData = data;
         state.currentDocIndex = 0;
+
+        // Safely close modal now that upload has completed
+        closeUploadModal();
 
         // Dynamically add this uploaded dossier to the top company selector dropdown
         const selectComp = document.getElementById('select-company');
         if (selectComp) {
-            const uploadOrgId = `ORG-UPLOAD-${Date.now()}`;
+            const uploadOrgId = data.org_id || `ORG-UPLOAD-${Date.now()}`;
+            const orgDisplayName = data.organization || org;
             const opt = document.createElement('option');
             opt.value = uploadOrgId;
-            opt.innerText = `📂 ${org} — ${selectedUploadFiles.length} Uploaded File(s)`;
+            opt.innerText = `📂 ${orgDisplayName} — ${primaryDocName}`;
             opt.selected = true;
             selectComp.insertBefore(opt, selectComp.firstChild);
+
+            // Save in session cache so switching between companies keeps custom uploaded audit intact
+            state.customUploadCases = state.customUploadCases || {};
+            state.customUploadCases[uploadOrgId] = data;
 
             // Prepend to state.organizations
             state.organizations.unshift({
                 org_id: uploadOrgId,
-                name: org,
-                sector: "Custom Ingested Vault",
-                jurisdiction: "Audited Under Governing Standards",
+                name: orgDisplayName,
+                sector: "Corporate Audit Entity",
+                jurisdiction: "Direct Statutory Compliance (124 Rules)",
                 governing_policy: {
-                    title: selectedUploadFiles[0].name,
-                    filename: selectedUploadFiles[0].name,
+                    title: primaryDocName,
+                    filename: primaryDocName,
                     relative_path: "",
-                    summary: "Uploaded Document Portfolio"
+                    summary: "Audited Company Document"
                 },
                 vendors: [{
-                    vendor_id: "VEN-UPLOADED",
-                    name: ven,
-                    scenario_id: "custom",
-                    contract: { title: selectedUploadFiles[0].name },
+                    vendor_id: "VEN-STANDALONE",
+                    name: "Direct Statutory Audit (124 Rules)",
+                    scenario_id: uploadOrgId,
+                    contract: { 
+                        title: primaryDocName,
+                        filename: primaryDocName,
+                        relative_path: ""
+                    },
                     evidence: []
                 }]
             });
             state.selectedOrgId = uploadOrgId;
-            state.selectedVendorId = "VEN-UPLOADED";
+            state.selectedVendorId = "VEN-STANDALONE";
 
             const vendSelect = document.getElementById('select-vendor');
             if (vendSelect) {
-                vendSelect.innerHTML = `<option value="VEN-UPLOADED">${ven} — ${selectedUploadFiles[0].name}</option>`;
+                vendSelect.innerHTML = `<option value="VEN-STANDALONE">Direct Statutory Audit (124 Rules)</option>`;
             }
+
+            const sectorDesc = document.getElementById('company-sector-desc');
+            if (sectorDesc) {
+                sectorDesc.innerText = `Audited Corporate Entity • Evaluating document directly against 124 compliance rules`;
+            }
+
+            const vendDesc = document.getElementById('vendor-contract-desc');
+            if (vendDesc) {
+                vendDesc.innerText = `Standalone Document • Direct Rule Validation (No vendor or contract required)`;
+            }
+
+            renderCompanyVaultRibbon(state.organizations[0]);
         }
 
         // Render Workspace Panels with the uploaded file
@@ -1301,6 +1510,11 @@ async function submitUploadAndAnalyze() {
     } catch (err) {
         console.error('Custom upload error:', err);
         alert('Analysis error: ' + err.message);
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnHtml;
+        }
     }
 }
 
